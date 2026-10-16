@@ -1,0 +1,44 @@
+@import "tailwindcss";
+
+/* Design tokens: change colours/fonts here and the whole app follows. */
+@theme {
+  --font-sans: "Golos Text", system-ui, sans-serif;
+  --font-display: "Unbounded", "Golos Text", sans-serif;
+
+  --color-paper: #edf0ea;
+  --color-surface: #f8faf6;
+  --color-ink: #1c2420;
+  --color-muted: #5e6a63;
+  --color-line: #cbd3cc;
+  --color-action: #2f5df5;
+  --color-action-ink: #ffffff;
+  --color-danger: #b42318;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-paper: #151a17;
+    --color-surface: #1d2420;
+    --color-ink: #e6ece7;
+    --color-muted: #9aa69f;
+    --color-line: #34403a;
+    --color-action: #6f8dff;
+    --color-action-ink: #0d1430;
+    --color-danger: #ff8a7f;
+  }
+}
+
+body {
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+.tabular { font-variant-numeric: tabular-nums; }
+
+:focus-visible { outline: 2px solid var(--color-action); outline-offset: 2px; border-radius: 4px; }
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; scroll-behavior: auto !important; }
+}
