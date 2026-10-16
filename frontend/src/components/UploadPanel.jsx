@@ -91,7 +91,7 @@ export default function UploadPanel({ onStart, error, engine, codeMode = "none" 
         {engine !== "deepgram" && (
           <Segmented label="Number of speakers" options={SPEAKERS} value={speakers} onChange={setSpeakers} />
         )}
-        {codeMode !== "none" && (
+        {file && codeMode !== "none" && ( // ask for the code only once there is something to transcribe
           <label className="min-w-0">
             <span className="mb-2 block text-sm text-muted">
               Access code{codeMode === "optional" && " (optional)"}
