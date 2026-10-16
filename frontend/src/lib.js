@@ -21,11 +21,12 @@ const srtTime = (sec) => {
 };
 
 // ---------- API ----------
-export async function startJob(file, language, numSpeakers) {
+export async function startJob(file, language, numSpeakers, code) {
   const body = new FormData();
   body.append("file", file);
   body.append("language", language);
   if (numSpeakers) body.append("num_speakers", numSpeakers);
+  if (code) body.append("code", code);
   const res = await fetch("/api/transcribe", { method: "POST", body });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.detail || `Upload failed (${res.status}).`);

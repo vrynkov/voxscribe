@@ -14,11 +14,18 @@ export default function App() {
   const [audioUrl, setAudioUrl] = useState("");
   const [job, setJob] = useState(null);
   const [engine, setEngine] = useState("deepgram");
+  const [codeMode, setCodeMode] = useState("none"); // "required" | "optional" | "none"
   const pollRef = useRef(null);
 
   // Ask the server which engine it uses (changes the footer and options).
   useEffect(() => {
-    fetch("/api/health").then((r) => r.json()).then((h) => h.engine && setEngine(h.engine)).catch(() => {});
+    fetch("/api/health")
+      .then((r) => r.json())
+      .then((h) => {
+        if (h.engine) setEngine(h.engine);
+        if (h.access_code) setCodeMode(h.access_code);
+      })
+      .catch(() => {});
   }, []);
 
   const stopPolling = () => clearTimeout(pollRef.current);
@@ -32,13 +39,13 @@ export default function App() {
     return () => URL.revokeObjectURL(url);
   }, [file]);
 
-  async function start(f, language, speakers) {
+  async function start(f, language, speakers, code) {
     setError("");
     setFile(f);
     setJob(null);
     setView("working");
     try {
-      const jobId = await startJob(f, language, speakers);
+      const jobId = await startJob(f, language, speakers, code);
       const poll = async () => {
         try {
           const j = await getJob(jobId);
@@ -90,7 +97,7 @@ export default function App() {
               Upload an interview, meeting or podcast. You get every line with its speaker and timestamp, and you can
               click any line to hear it.
             </p>
-            <UploadPanel onStart={start} error={error} engine={engine} />
+            <UploadPanel onStart={start} error={error} engine={engine} codeMode={codeMode} />
           </>
         )}
         {view === "working" && (

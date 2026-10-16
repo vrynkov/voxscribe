@@ -10,12 +10,14 @@ from __future__ import annotations
 import logging
 import math
 import os
+import secrets
 import tempfile
 import threading
 import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager, contextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
@@ -42,6 +44,13 @@ ALLOWED = {".mp3", ".wav", ".m4a", ".ogg", ".flac", ".webm", ".mp4"}
 UPLOAD_DIR = Path(tempfile.gettempdir()) / "voxscribe"
 UPLOAD_DIR.mkdir(exist_ok=True)
 
+# ---- protect the paid API key on a public server ----
+# All three are read once at startup, from the server's own settings. Nothing a
+# visitor sends can change them. Leave them empty (e.g. on your laptop) = no limits.
+DAILY_MINUTES = int(os.getenv("DAILY_MINUTES", "0"))  # audio minutes per day for everyone together; 0 = no cap
+ACCESS_CODE = os.getenv("ACCESS_CODE", "")            # visitors must type this to upload
+OWNER_CODE = os.getenv("OWNER_CODE", "")              # you: skips the code check and the daily cap
+
 @asynccontextmanager
 async def lifespan(_app):
     # Load the speaker model in the background so the first user doesn't wait for it.
@@ -67,6 +76,36 @@ app.add_middleware(  # lets the Vite dev server (port 5173) call the API locally
 jobs: dict[str, dict] = {}
 lock = threading.Lock()
 worker = ThreadPoolExecutor(max_workers=1)  # one job at a time: the free CPU is small
+usage = {"day": "", "seconds": 0.0}  # audio processed today (UTC), counted on the server
+
+
+def _today() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+
+def _same(given: str, expected: str) -> bool:
+    # compare_digest takes the same time whether the first or the last letter is wrong,
+    # so nobody can guess the code letter by letter by timing the answers.
+    return bool(expected) and secrets.compare_digest(given.encode(), expected.encode())
+
+
+def minutes_used_today() -> float:
+    with lock:
+        if usage["day"] != _today():  # new day: start counting from zero
+            usage.update(day=_today(), seconds=0.0)
+        return usage["seconds"] / 60
+
+
+def reserve_minutes(duration: float):
+    """Count this file against today's cap, or refuse it. Uses the duration ffmpeg measured, never a number from the browser."""
+    with lock:
+        if usage["day"] != _today():
+            usage.update(day=_today(), seconds=0.0)
+        if usage["seconds"] + duration > DAILY_MINUTES * 60:
+            left = max(0.0, DAILY_MINUTES - usage["seconds"] / 60)
+            raise ValueError(f"The daily demo limit is reached ({left:.0f} of {DAILY_MINUTES} min left today). "
+                             "Try a shorter file, or come back tomorrow.")
+        usage["seconds"] += duration
 
 
 def update(job_id: str, **fields):
@@ -108,13 +147,15 @@ def estimated_progress(job_id: str, expected_seconds: float, start: float, end: 
         thread.join(timeout=1)
 
 
-def run_job(job_id: str, path: Path, language: str | None, num_speakers: int | None):
+def run_job(job_id: str, path: Path, language: str | None, num_speakers: int | None, capped: bool = False):
     try:
         update(job_id, status="processing", stage="Preparing audio", progress=0.05)
         audio = pipeline.prepare_audio(path)
         duration = len(audio) / pipeline.SAMPLE_RATE
         if duration > MAX_AUDIO_MINUTES * 60:
             raise ValueError(f"Audio is {duration/60:.0f} min; the limit is {MAX_AUDIO_MINUTES} min.")
+        if capped:  # counted before the paid call, so a failed job still counts (the API may have charged)
+            reserve_minutes(duration)
 
         update(job_id, stage="Transcribing speech", progress=0.1, duration=duration)
         eng = pipeline.engine()
@@ -169,7 +210,9 @@ def run_job(job_id: str, path: Path, language: str | None, num_speakers: int | N
 def health():
     return {"ok": True, "engine": pipeline.engine(),
             "deepgram_key": bool(os.getenv("DEEPGRAM_API_KEY")),
-            "groq_key": bool(os.getenv("GROQ_API_KEY")), "hf_token": bool(os.getenv("HF_TOKEN"))}
+            "groq_key": bool(os.getenv("GROQ_API_KEY")), "hf_token": bool(os.getenv("HF_TOKEN")),
+            # "required" / "optional" (only the owner code exists) / "none": tells the page whether to show the code box
+            "access_code": "required" if ACCESS_CODE else "optional" if OWNER_CODE else "none"}
 
 
 @app.post("/api/transcribe")
@@ -177,8 +220,15 @@ async def transcribe(
     file: UploadFile = File(...),
     language: str = Form("auto"),          # "auto" | "en" | "ru"
     num_speakers: int | None = Form(None),  # leave empty to auto-detect
+    code: str = Form(""),                   # access code or owner code, if the server uses them
 ):
     cleanup_old_jobs()
+    is_owner = _same(code, OWNER_CODE)
+    if ACCESS_CODE and not is_owner and not _same(code, ACCESS_CODE):
+        raise HTTPException(401, "Wrong or missing access code.")
+    capped = bool(DAILY_MINUTES) and not is_owner
+    if capped and minutes_used_today() >= DAILY_MINUTES:  # say no before the upload is even saved
+        raise HTTPException(429, "The daily demo limit is reached. Please come back tomorrow.")
     ext = Path(file.filename or "").suffix.lower()
     if ext not in ALLOWED:
         raise HTTPException(400, f"Unsupported file type '{ext}'. Please upload an MP3.")
@@ -202,7 +252,7 @@ async def transcribe(
     with lock:
         jobs[job_id] = {"id": job_id, "status": "queued", "stage": "Waiting in queue", "progress": 0.0,
                         "filename": file.filename, "updated": time.time()}
-    worker.submit(run_job, job_id, path, None if language == "auto" else language, num_speakers)
+    worker.submit(run_job, job_id, path, None if language == "auto" else language, num_speakers, capped)
     return {"job_id": job_id}
 
 

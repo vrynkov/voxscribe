@@ -111,7 +111,7 @@ Run the tests (no keys needed): in Window 1, `pip install -r requirements-dev.tx
 ## 3. Put it online for free (Hugging Face Spaces)
 
 1. Go to [huggingface.co/new-space](https://huggingface.co/new-space). Pick **Docker** → **Blank**, hardware **CPU basic (free)**, visibility **Public**.
-2. In the Space: **Settings → Variables and secrets → New secret**. Add `DEEPGRAM_API_KEY` (and `GROQ_API_KEY` + `HF_TOKEN` if you want the backup engine).
+2. In the Space: **Settings → Variables and secrets → New secret**. Add `DEEPGRAM_API_KEY` (and `GROQ_API_KEY` + `HF_TOKEN` if you want the backup engine). Then add the limits from "Before a demo" below.
 3. Push this folder to the Space (Command Prompt, in the `voxscribe` folder):
 
    ```cmd
@@ -133,6 +133,7 @@ Also push to GitHub for your portfolio (`git remote add origin ...`). The README
 - Free Spaces **fall asleep** when nobody uses them. Open the link 2 minutes before the interview so it wakes up.
 - Use the Deepgram engine. The free Space has only 2 CPUs, so the local engine would be very slow there.
 - Check your remaining Deepgram credit in its console now and then.
+- A public Space means anyone can spend your Deepgram credit. Set `DAILY_MINUTES` (a normal variable, e.g. `120`) and, if you like, `ACCESS_CODE` (a secret). Put the access code next to the link on your CV. Use a separate Deepgram key for the Space so you can delete it alone if it's abused.
 
 ## Settings (environment variables)
 
@@ -147,6 +148,9 @@ Also push to GitHub for your portfolio (`git remote add origin ...`). The README
 | `MAX_UPLOAD_MB` | `100` | Biggest file allowed |
 | `MAX_AUDIO_MINUTES` | `60` | Longest audio allowed |
 | `CORS_ORIGINS` | `http://localhost:5173` | Only matters if the frontend is hosted separately |
+| `DAILY_MINUTES` | `0` (no cap) | Audio minutes per day for all visitors together. Protects your Deepgram credit |
+| `ACCESS_CODE` | | If set, visitors must type it before uploading. Add as a **secret** |
+| `OWNER_CODE` | | Your own code: skips the access code and the daily cap. Long and random, add as a **secret**, never share it |
 
 ## Talking points for interviews
 

@@ -1,5 +1,10 @@
 import { useRef, useState } from "react";
 
+// Remember the code in this browser so you don't retype it. Don't type the owner code on a shared computer.
+const CODE_KEY = "voxscribe-code";
+const loadCode = () => { try { return localStorage.getItem(CODE_KEY) || ""; } catch { return ""; } };
+const saveCode = (c) => { try { localStorage.setItem(CODE_KEY, c); } catch { /* storage blocked: fine */ } };
+
 const LANGUAGES = [
   { value: "auto", label: "Detect" },
   { value: "en", label: "English" },
@@ -36,12 +41,14 @@ function Segmented({ label, options, value, onChange }) {
   );
 }
 
-export default function UploadPanel({ onStart, error, engine }) {
+export default function UploadPanel({ onStart, error, engine, codeMode = "none" }) {
   const inputRef = useRef(null);
   const [file, setFile] = useState(null);
   const [dragging, setDragging] = useState(false);
   const [language, setLanguage] = useState("auto");
   const [speakers, setSpeakers] = useState("");
+  const [code, setCode] = useState(loadCode);
+  const needsCode = codeMode === "required" && !code.trim();
 
   const pick = (f) => f && setFile(f);
 
@@ -84,10 +91,27 @@ export default function UploadPanel({ onStart, error, engine }) {
         {engine !== "deepgram" && (
           <Segmented label="Number of speakers" options={SPEAKERS} value={speakers} onChange={setSpeakers} />
         )}
+        {codeMode !== "none" && (
+          <label className="min-w-0">
+            <span className="mb-2 block text-sm text-muted">
+              Access code{codeMode === "optional" && " (optional)"}
+            </span>
+            <input
+              type="password"
+              autoComplete="off"
+              value={code}
+              onChange={(e) => setCode(e.target.value)}
+              className="w-44 rounded-lg border border-line bg-paper px-3 py-2 text-sm"
+            />
+          </label>
+        )}
         <button
           type="button"
-          disabled={!file}
-          onClick={() => onStart(file, language, engine === "deepgram" ? "" : speakers)}
+          disabled={!file || needsCode}
+          onClick={() => {
+            saveCode(code.trim());
+            onStart(file, language, engine === "deepgram" ? "" : speakers, code.trim());
+          }}
           className="ml-auto rounded-lg bg-action px-6 py-2.5 font-medium text-action-ink transition-opacity disabled:cursor-not-allowed disabled:opacity-40"
         >
           Transcribe
