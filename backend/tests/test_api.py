@@ -113,7 +113,7 @@ def test_daily_cap_counts_server_measured_minutes(tmp_path, monkeypatch):
         assert abs(main.usage["seconds"] - 3) < 0.2           # ffmpeg's 3 s, not anything the browser said
         main.usage["seconds"] = 58                            # 2 s left, the file is 3 s
         _, job = _run(client, audio)
-        assert job["status"] == "error" and "daily demo limit" in job["error"]
+        assert job["status"] == "error" and "demo minutes are left" in job["error"]
         main.usage["seconds"] = 60                            # nothing left: refused before the upload is saved
         assert _run(client, audio)[0] == 429
 
@@ -145,3 +145,14 @@ def test_no_settings_means_no_limits(tmp_path, monkeypatch):
     with TestClient(main.app) as client:
         assert client.get("/api/health").json()["access_code"] == "none"
         assert _run(client, audio)[1]["status"] == "done"
+
+
+def test_cap_message_never_contradicts_itself(monkeypatch):
+    # 150.4 s twice is 300.8 s: just over a 5-minute cap. Plain rounding would say "2.5 min, but 2.5 left".
+    monkeypatch.setattr(main, "DAILY_MINUTES", 5)
+    monkeypatch.setattr(main, "usage", {"day": main._today(), "seconds": 150.4})
+    try:
+        main.reserve_minutes(150.4)
+        assert False, "should be refused"
+    except ValueError as e:
+        assert "This file is 2.6 min, but only 2.4 of today's 5" in str(e), e

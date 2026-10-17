@@ -61,6 +61,9 @@ async def lifespan(_app):
         except Exception as e:
             log.warning("Could not preload diarization model: %s", e)
     log.info("Engine: %s", pipeline.engine())
+    log.info("Limits: daily cap %s, access code %s, owner code %s",
+             f"{DAILY_MINUTES} min" if DAILY_MINUTES else "off",
+             "on" if ACCESS_CODE else "off", "on" if OWNER_CODE else "off")
     if pipeline.engine() == "local":
         threading.Thread(target=_load, daemon=True).start()
     yield
@@ -102,9 +105,11 @@ def reserve_minutes(duration: float):
         if usage["day"] != _today():
             usage.update(day=_today(), seconds=0.0)
         if usage["seconds"] + duration > DAILY_MINUTES * 60:
-            left = max(0.0, DAILY_MINUTES - usage["seconds"] / 60)
-            raise ValueError(f"The daily demo limit is reached ({left:.0f} of {DAILY_MINUTES} min left today). "
-                             "Try a shorter file, or come back tomorrow.")
+            # Round the file up and the time left down, so the message never reads "2.5 min, but 2.5 left".
+            need = math.ceil(duration / 6) / 10
+            left = max(0.0, math.floor((DAILY_MINUTES * 60 - usage["seconds"]) / 6) / 10)
+            raise ValueError(f"This file is {need:.1f} min, but only {left:.1f} of today's {DAILY_MINUTES} "
+                             "demo minutes are left. Try a shorter file, or come back tomorrow.")
         usage["seconds"] += duration
 
 
@@ -212,7 +217,9 @@ def health():
             "deepgram_key": bool(os.getenv("DEEPGRAM_API_KEY")),
             "groq_key": bool(os.getenv("GROQ_API_KEY")), "hf_token": bool(os.getenv("HF_TOKEN")),
             # "required" / "optional" (only the owner code exists) / "none": tells the page whether to show the code box
-            "access_code": "required" if ACCESS_CODE else "optional" if OWNER_CODE else "none"}
+            "access_code": "required" if ACCESS_CODE else "optional" if OWNER_CODE else "none",
+            # the cap is public on purpose: knowing it doesn't help anyone get past it
+            "daily_minutes": DAILY_MINUTES, "minutes_used_today": round(minutes_used_today(), 1)}
 
 
 @app.post("/api/transcribe")
