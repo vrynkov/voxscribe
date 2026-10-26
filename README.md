@@ -142,3 +142,7 @@ Why these flags:
 | `DAILY_MINUTES` | `0` (no cap) | Audio minutes per day for all visitors together. Protects your Deepgram credit |
 | `ACCESS_CODE` | | If set, visitors must type it before uploading. Add as a **secret** |
 | `OWNER_CODE` | | Your own code: skips the access code and the daily cap. Long and random, add as a **secret**, never share it |
+
+## Next steps
+
+- **Summarize the conversation.** Add a "Summary" button that turns the finished transcript into short notes: key points, decisions and action items, with who said what. The plan is a free LLM on Groq, the same service the local engine already uses.
