@@ -1,0 +1,10 @@
+# Files gcloud must NOT upload when building in the cloud (same idea as .dockerignore)
+.git
+.gitignore
+**/node_modules
+frontend/dist
+**/__pycache__
+**/.pytest_cache
+**/.venv
+**/.env
+**/*.mp3

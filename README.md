@@ -1,13 +1,3 @@
----
-title: VoxScribe
-emoji: 🎙️
-colorFrom: blue
-colorTo: green
-sdk: docker
-app_port: 7860
-pinned: false
----
-
 # VoxScribe
 
 Upload an MP3, get a transcript that shows **who** spoke and **when**:
@@ -63,7 +53,7 @@ frontend/
   src/components/UploadPanel.jsx    drag & drop, language, speaker count (local engine)
   src/components/ProgressPanel.jsx  live stages
   src/components/TranscriptView.jsx player, speaker timeline, transcript, downloads
-Dockerfile          one container: builds React, runs FastAPI on port 7860
+Dockerfile          one container: builds React, runs FastAPI (Deepgram engine only, for the cloud)
 ```
 
 ## 1. Get free keys
@@ -87,8 +77,10 @@ You need Python 3.11–3.13, Node.js 20+, and ffmpeg (`winget install Gyan.FFmpe
 cd backend
 python -m venv .venv
 .venv\Scripts\activate.bat
-pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
 pip install -r requirements.txt
+rem Only if you want the slow local engine too:
+pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
+pip install -r requirements-local.txt
 copy .env.example .env
 notepad .env
 uvicorn app.main:app --reload --port 8000 --no-access-log
@@ -108,32 +100,33 @@ Open http://localhost:5173.
 
 Run the tests (no keys needed): in Window 1, `pip install -r requirements-dev.txt` then `python -m pytest`.
 
-## 3. Put it online for free (Hugging Face Spaces)
+## 3. Put it online (Google Cloud Run, free at demo traffic)
 
-1. Go to [huggingface.co/new-space](https://huggingface.co/new-space). Pick **Docker** → **Blank**, hardware **CPU basic (free)**, visibility **Public**.
-2. In the Space: **Settings → Variables and secrets → New secret**. Add `DEEPGRAM_API_KEY` (and `GROQ_API_KEY` + `HF_TOKEN` if you want the backup engine). Then add the limits from "Before a demo" below.
-3. Push this folder to the Space (Command Prompt, in the `voxscribe` folder):
+The cloud image runs the Deepgram engine only (no PyTorch), so it's small and builds fast. You need the [gcloud CLI](https://cloud.google.com/sdk/docs/install) and a Google Cloud project with billing turned on. Cloud Run's free monthly allowance covers a demo, and a budget alert tells you if that ever changes.
+
+1. **Secrets.** In the Cloud Console, open **Secret Manager → Create secret** and create `deepgram-key`, `access-code` and `owner-code`.
+2. **Deploy** (Command Prompt, in the `voxscribe` folder; `^` continues a line):
 
    ```cmd
-   git init
-   git add .
-   git commit -m "VoxScribe"
-   git branch -M main
-   git remote add space https://huggingface.co/spaces/<your-username>/voxscribe
-   git push space main
+   gcloud run deploy voxscribe --source . --region us-central1 --allow-unauthenticated ^
+     --memory 1Gi --cpu 1 --no-cpu-throttling --max-instances 1 --timeout 900 ^
+     --set-env-vars DAILY_MINUTES=60,MAX_UPLOAD_MB=30 ^
+     --set-secrets DEEPGRAM_API_KEY=deepgram-key:latest,ACCESS_CODE=access-code:latest,OWNER_CODE=owner-code:latest
    ```
 
-   When it asks for a password, use a Hugging Face token with *Write* access.
-4. The first build takes about 10 minutes. Your app is then live at `https://<your-username>-voxscribe.hf.space`.
+   Google builds the Dockerfile in the cloud (Cloud Build), so you don't need Docker installed. The command prints your app's URL when it's done.
 
-Also push to GitHub for your portfolio (`git remote add origin ...`). The README header block is only read by Hugging Face.
+Why these flags:
+
+- `--no-cpu-throttling`: by default Cloud Run only gives the server CPU while it's answering a request. This app answers the upload right away and does the work in the background, so the CPU has to stay on. It still scales to zero when nobody uses it.
+- `--max-instances 1`: jobs live in memory, so every request must reach the same server.
+- `MAX_UPLOAD_MB=30`: Cloud Run refuses request bodies over 32 MB.
 
 ### Before a demo
 
-- Free Spaces **fall asleep** when nobody uses them. Open the link 2 minutes before the interview so it wakes up.
-- Use the Deepgram engine. The free Space has only 2 CPUs, so the local engine would be very slow there.
-- Check your remaining Deepgram credit in its console now and then.
-- A public Space means anyone can spend your Deepgram credit. Set `DAILY_MINUTES` (a normal variable, e.g. `120`) and, if you like, `ACCESS_CODE` (a secret). Put the access code next to the link on your CV. Use a separate Deepgram key for the Space so you can delete it alone if it's abused.
+- The app **falls asleep** when nobody uses it. Open the link a minute before the interview so it wakes up.
+- Anyone with the link can spend your Deepgram credit, so keep `DAILY_MINUTES` and `ACCESS_CODE` set, and put the access code next to the link on your CV. Use a separate Deepgram key for the cloud so you can delete it alone if it's abused.
+- Check your Deepgram credit and your Google Cloud billing now and then.
 
 ## Settings (environment variables)
 
