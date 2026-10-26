@@ -142,10 +142,3 @@ Why these flags:
 | `DAILY_MINUTES` | `0` (no cap) | Audio minutes per day for all visitors together. Protects your Deepgram credit |
 | `ACCESS_CODE` | | If set, visitors must type it before uploading. Add as a **secret** |
 | `OWNER_CODE` | | Your own code: skips the access code and the daily cap. Long and random, add as a **secret**, never share it |
-
-## Talking points for interviews
-
-- **Why a job queue?** Free hosting kills long requests, and the user gets live progress.
-- **Why two engines?** I started fully open-source (Whisper + pyannote). Measured on a laptop, speaker detection took about as long as the audio, and the free cloud server is even weaker. So I added Deepgram behind the same interface: same merge step, same UI, swap with one setting. That's a real trade-off story: cost vs speed vs vendor lock-in.
-- **The hard part:** Whisper's word list has no punctuation, but its sentence text does. `words_with_punctuation()` lines them up so the transcript reads naturally.
-- **Limits:** jobs live in memory, so a restart loses them; one job runs at a time. Next steps would be Redis + a worker, chunked uploads, and word-level highlighting during playback.
