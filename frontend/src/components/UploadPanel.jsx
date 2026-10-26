@@ -41,7 +41,7 @@ function Segmented({ label, options, value, onChange }) {
   );
 }
 
-export default function UploadPanel({ onStart, error, engine, codeMode = "none" }) {
+export default function UploadPanel({ onStart, error, engine, codeMode = "none", limits = { mb: 32, minutes: 60 } }) {
   const inputRef = useRef(null);
   const [file, setFile] = useState(null);
   const [dragging, setDragging] = useState(false);
@@ -81,7 +81,7 @@ export default function UploadPanel({ onStart, error, engine, codeMode = "none" 
         ) : (
           <>
             <p className="text-lg font-medium">Drop an MP3 here, or click to choose one</p>
-            <p className="mt-1 text-sm text-muted">Up to 100 MB and 60 minutes</p>
+            <p className="mt-1 text-sm text-muted">Up to {limits.mb} MB and {limits.minutes} minutes</p>
           </>
         )}
       </div>

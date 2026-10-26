@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import ProgressPanel from "./components/ProgressPanel.jsx";
 import TranscriptView from "./components/TranscriptView.jsx";
 import UploadPanel from "./components/UploadPanel.jsx";
-import { getJob, startJob } from "./lib.js";
+import { checkCode, getJob, startJob } from "./lib.js";
 
 const POLL_MS = 1500;
 
@@ -15,6 +15,7 @@ export default function App() {
   const [job, setJob] = useState(null);
   const [engine, setEngine] = useState("deepgram");
   const [codeMode, setCodeMode] = useState("none"); // "required" | "optional" | "none"
+  const [limits, setLimits] = useState({ mb: 32, minutes: 60 });
   const pollRef = useRef(null);
 
   // Ask the server which engine it uses (changes the footer and options).
@@ -24,6 +25,7 @@ export default function App() {
       .then((h) => {
         if (h.engine) setEngine(h.engine);
         if (h.access_code) setCodeMode(h.access_code);
+        if (h.max_upload_mb) setLimits({ mb: h.max_upload_mb, minutes: h.max_audio_minutes });
       })
       .catch(() => {});
   }, []);
@@ -41,6 +43,17 @@ export default function App() {
 
   async function start(f, language, speakers, code) {
     setError("");
+    // Catch the two common mistakes before the upload, not after it.
+    if (f.size > limits.mb * 1024 * 1024 - 64 * 1024) { // same margin as the server
+      return setError(`This file is ${(f.size / 1024 / 1024).toFixed(1)} MB, but the maximum is ${limits.mb} MB. Try a shorter or more compressed MP3.`);
+    }
+    if (codeMode !== "none") {
+      try {
+        await checkCode(code);
+      } catch (e) {
+        return setError(e.message);
+      }
+    }
     setFile(f);
     setJob(null);
     setView("working");
@@ -97,7 +110,7 @@ export default function App() {
               Upload an interview, meeting or podcast. You get every line with its speaker and timestamp, and you can
               click any line to hear it.
             </p>
-            <UploadPanel onStart={start} error={error} engine={engine} codeMode={codeMode} />
+            <UploadPanel onStart={start} error={error} engine={engine} codeMode={codeMode} limits={limits} />
           </>
         )}
         {view === "working" && (

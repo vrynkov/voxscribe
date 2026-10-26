@@ -37,7 +37,9 @@ from .merge import merge, to_text, words_with_punctuation
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("api")
 
-MAX_UPLOAD_MB = int(os.getenv("MAX_UPLOAD_MB", "100"))
+# Google Cloud Run refuses any upload over 32 MB. Cloud Run always sets K_SERVICE, so we can tell where we run.
+MAX_UPLOAD_MB = 32 if os.getenv("K_SERVICE") else 100
+MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024 - 64 * 1024  # leave room for the form fields sent with the file
 MAX_AUDIO_MINUTES = int(os.getenv("MAX_AUDIO_MINUTES", "60"))
 JOB_TTL_SECONDS = 2 * 3600
 ALLOWED = {".mp3", ".wav", ".m4a", ".ogg", ".flac", ".webm", ".mp4"}
@@ -219,7 +221,27 @@ def health():
             # "required" / "optional" (only the owner code exists) / "none": tells the page whether to show the code box
             "access_code": "required" if ACCESS_CODE else "optional" if OWNER_CODE else "none",
             # the cap is public on purpose: knowing it doesn't help anyone get past it
-            "daily_minutes": DAILY_MINUTES, "minutes_used_today": round(minutes_used_today(), 1)}
+            "daily_minutes": DAILY_MINUTES, "minutes_used_today": round(minutes_used_today(), 1),
+            "max_upload_mb": MAX_UPLOAD_MB, "max_audio_minutes": MAX_AUDIO_MINUTES}
+
+
+def check_code(code: str) -> bool:
+    """Refuse a wrong code or a used-up day. Returns True if this upload counts against the daily cap."""
+    is_owner = _same(code, OWNER_CODE)
+    if ACCESS_CODE and not is_owner and not _same(code, ACCESS_CODE):
+        raise HTTPException(401, "Wrong access code.")
+    capped = bool(DAILY_MINUTES) and not is_owner
+    if capped and minutes_used_today() >= DAILY_MINUTES:  # say no before the upload is even saved
+        raise HTTPException(429, "The daily demo limit is reached. Please come back tomorrow.")
+    return capped
+
+
+@app.post("/api/check-code")
+def check_code_first(code: str = Form("")):
+    # The page calls this before sending the file, so a wrong code is reported at once
+    # instead of after a long upload. /api/transcribe still checks again: never trust the page.
+    check_code(code)
+    return {"ok": True}
 
 
 @app.post("/api/transcribe")
@@ -230,12 +252,7 @@ async def transcribe(
     code: str = Form(""),                   # access code or owner code, if the server uses them
 ):
     cleanup_old_jobs()
-    is_owner = _same(code, OWNER_CODE)
-    if ACCESS_CODE and not is_owner and not _same(code, ACCESS_CODE):
-        raise HTTPException(401, "Wrong or missing access code.")
-    capped = bool(DAILY_MINUTES) and not is_owner
-    if capped and minutes_used_today() >= DAILY_MINUTES:  # say no before the upload is even saved
-        raise HTTPException(429, "The daily demo limit is reached. Please come back tomorrow.")
+    capped = check_code(code)
     ext = Path(file.filename or "").suffix.lower()
     if ext not in ALLOWED:
         raise HTTPException(400, f"Unsupported file type '{ext}'. Please upload an MP3.")
@@ -246,14 +263,14 @@ async def transcribe(
 
     job_id = uuid.uuid4().hex
     path = UPLOAD_DIR / f"{job_id}{ext}"
-    size, limit = 0, MAX_UPLOAD_MB * 1024 * 1024
+    size, limit = 0, MAX_UPLOAD_BYTES
     with path.open("wb") as out:  # stream to disk in 1 MB pieces; stop if too big
         while chunk := await file.read(1024 * 1024):
             size += len(chunk)
             if size > limit:
                 out.close()
                 path.unlink(missing_ok=True)
-                raise HTTPException(413, f"File is larger than {MAX_UPLOAD_MB} MB.")
+                raise HTTPException(413, f"This file is too big. The maximum is {MAX_UPLOAD_MB} MB.")
             out.write(chunk)
 
     with lock:

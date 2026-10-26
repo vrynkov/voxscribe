@@ -21,6 +21,15 @@ const srtTime = (sec) => {
 };
 
 // ---------- API ----------
+// Ask the server if the code is right before sending a big file.
+export async function checkCode(code) {
+  const body = new FormData();
+  body.append("code", code || "");
+  const res = await fetch("/api/check-code", { method: "POST", body });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.detail || `Could not check the access code (${res.status}).`);
+}
+
 export async function startJob(file, language, numSpeakers, code) {
   const body = new FormData();
   body.append("file", file);
@@ -29,6 +38,7 @@ export async function startJob(file, language, numSpeakers, code) {
   if (code) body.append("code", code);
   const res = await fetch("/api/transcribe", { method: "POST", body });
   const data = await res.json().catch(() => ({}));
+  if (res.status === 413 && !data.detail) throw new Error("This file is too big for the server. Try a smaller file.");
   if (!res.ok) throw new Error(data.detail || `Upload failed (${res.status}).`);
   return data.job_id;
 }

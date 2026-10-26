@@ -110,7 +110,7 @@ The cloud image runs the Deepgram engine only (no PyTorch), so it's small and bu
    ```cmd
    gcloud run deploy voxscribe --source . --region us-central1 --allow-unauthenticated ^
      --memory 1Gi --cpu 1 --no-cpu-throttling --max-instances 1 --timeout 900 ^
-     --set-env-vars DAILY_MINUTES=60,MAX_UPLOAD_MB=30 ^
+     --set-env-vars DAILY_MINUTES=60 ^
      --set-secrets DEEPGRAM_API_KEY=deepgram-key:latest,ACCESS_CODE=access-code:latest,OWNER_CODE=owner-code:latest
    ```
 
@@ -120,7 +120,6 @@ Why these flags:
 
 - `--no-cpu-throttling`: by default Cloud Run only gives the server CPU while it's answering a request. This app answers the upload right away and does the work in the background, so the CPU has to stay on. It still scales to zero when nobody uses it.
 - `--max-instances 1`: jobs live in memory, so every request must reach the same server.
-- `MAX_UPLOAD_MB=30`: Cloud Run refuses request bodies over 32 MB.
 
 ### Before a demo
 
@@ -138,7 +137,6 @@ Why these flags:
 | `GROQ_API_KEY` | | Local engine: speech-to-text |
 | `HF_TOKEN` | | Local engine: downloads the speaker model |
 | `GROQ_MODEL` | `whisper-large-v3` | `whisper-large-v3-turbo` is faster, slightly less accurate |
-| `MAX_UPLOAD_MB` | `100` | Biggest file allowed |
 | `MAX_AUDIO_MINUTES` | `60` | Longest audio allowed |
 | `CORS_ORIGINS` | `http://localhost:5173` | Only matters if the frontend is hosted separately |
 | `DAILY_MINUTES` | `0` (no cap) | Audio minutes per day for all visitors together. Protects your Deepgram credit |

@@ -156,3 +156,39 @@ def test_cap_message_never_contradicts_itself(monkeypatch):
         assert False, "should be refused"
     except ValueError as e:
         assert "This file is 2.6 min, but only 2.4 of today's 5" in str(e), e
+
+
+def test_check_code_before_upload(monkeypatch):
+    monkeypatch.setattr(main, "ACCESS_CODE", "letmein")
+    monkeypatch.setattr(main, "OWNER_CODE", "a-long-random-owner-code")
+    monkeypatch.setattr(main, "DAILY_MINUTES", 1)
+    monkeypatch.setattr(main, "usage", {"day": main._today(), "seconds": 0.0})
+    with TestClient(main.app) as client:
+        check = lambda code: client.post("/api/check-code", data={"code": code})
+        assert check("").status_code == 401
+        r = check("wrong")
+        assert r.status_code == 401 and r.json()["detail"] == "Wrong access code."
+        assert check("letmein").status_code == 200
+        assert check("a-long-random-owner-code").status_code == 200
+        main.usage["seconds"] = 60
+        assert check("letmein").status_code == 429                    # day used up: say so before the upload
+        assert check("a-long-random-owner-code").status_code == 200   # you are never capped
+        health = client.get("/api/health").json()
+    assert health["max_upload_mb"] == main.MAX_UPLOAD_MB
+
+
+def test_too_big_file_is_refused_with_a_clear_message(monkeypatch):
+    monkeypatch.setattr(main, "MAX_UPLOAD_BYTES", 1024)  # pretend the limit is 1 KB so the test stays fast
+    with TestClient(main.app) as client:
+        r = client.post("/api/transcribe", files={"file": ("big.mp3", b"0" * 2048, "audio/mpeg")})
+    assert r.status_code == 413 and r.json()["detail"] == f"This file is too big. The maximum is {main.MAX_UPLOAD_MB} MB."
+
+
+def test_upload_limit_is_100_mb_on_laptop_and_32_mb_on_cloud_run(monkeypatch):
+    import importlib
+    monkeypatch.delenv("K_SERVICE", raising=False)
+    assert importlib.reload(main).MAX_UPLOAD_MB == 100
+    monkeypatch.setenv("K_SERVICE", "voxscribe")       # Cloud Run sets this by itself
+    assert importlib.reload(main).MAX_UPLOAD_MB == 32
+    monkeypatch.delenv("K_SERVICE")
+    importlib.reload(main)
